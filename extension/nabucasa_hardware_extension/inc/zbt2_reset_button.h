@@ -14,6 +14,8 @@
  * @brief Handle button state change
  * @param pressed true if button is pressed, false if released
  */
+void zbt2_reset_button_process_action(void);
+
 void zbt2_reset_button_handle_state(bool pressed);
 
 #endif // ZBT2_RESET_BUTTON_H

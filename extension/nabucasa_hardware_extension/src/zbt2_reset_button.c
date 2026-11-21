@@ -31,6 +31,7 @@ static sl_sleeptimer_timer_handle_t blink_timer;
 static uint8_t reset_cycle = 0;
 static uint8_t blink_count = 0;
 static bool led_on = false;
+static volatile bool reset_requested;
 
 // Task to handle the LED blinking pattern
 static void blink_task(sl_sleeptimer_timer_handle_t *handle, void *data);
@@ -83,7 +84,7 @@ static void blink_task(sl_sleeptimer_timer_handle_t *handle, void *data)
         if (blink_count >= reset_cycle) {
             blink_count = 0;
             if (reset_cycle == ZBT2_RESET_BUTTON_CYCLES) {
-                reset_adapter();
+                reset_requested = true;
             } else {
                 sl_sleeptimer_start_timer_ms(&reset_timer, ZBT2_RESET_BUTTON_CYCLE_DELAY_MS, reset_timer_callback, NULL, 0, 0);
             }
@@ -95,6 +96,13 @@ static void blink_task(sl_sleeptimer_timer_handle_t *handle, void *data)
         led_on = true;
         blink_count++;
         sl_sleeptimer_start_timer_ms(&blink_timer, ZBT2_RESET_BUTTON_BLINK_ON_MS, blink_task, NULL, 0, 0);
+    }
+}
+
+void zbt2_reset_button_process_action(void)
+{
+    if (reset_requested) {
+        reset_adapter();
     }
 }
 
