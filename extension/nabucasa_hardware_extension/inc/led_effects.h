@@ -15,6 +15,7 @@
  * Starts the tilt monitor and network status indication.
  */
 void led_effects_init(void);
+void led_effects_process_action(void);
 
 /**
  * @brief Set network formation state

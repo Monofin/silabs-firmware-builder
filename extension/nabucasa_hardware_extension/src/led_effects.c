@@ -13,6 +13,7 @@
 #include "sl_status.h"
 #include "sl_sleeptimer.h"
 #include <math.h>
+#include "em_core.h"
 
 #ifndef M_PI
 #define M_PI  3.14159265358979323846f
@@ -20,7 +21,7 @@
 
 // Internal state
 static sl_sleeptimer_timer_handle_t tilt_monitor_timer;
-static uint32_t monitor_ticks = 0;
+static volatile bool sample_due;
 static bool is_monitoring = false;
 static bool was_tilted = false;
 
@@ -47,38 +48,47 @@ static void tilt_monitor_callback(sl_sleeptimer_timer_handle_t *handle, void *da
 {
   (void)handle;
   (void)data;
-  monitor_ticks++;
+  sample_due = true;
+}
 
-  // Check tilt every ~100ms (25 * 4ms)
-  if (monitor_ticks % 25 == 0) {
-    float xyz[3];
-    if (!qma6100p_read_acc_xyz(sl_i2cspm_inst, xyz)) {
-      return;
-    }
-    float tilt_angle = calculate_tilt_angle(xyz);
-    bool is_tilted;
-    
-    if (was_tilted) {
-        is_tilted = (tilt_angle > (LED_EFFECTS_TILT_THRESHOLD_DEG - LED_EFFECTS_TILT_HYSTERESIS_DEG));
-    } else {
-        is_tilted = (tilt_angle > LED_EFFECTS_TILT_THRESHOLD_DEG);
-    }
-
-    if (is_tilted && !was_tilted) {
-        // Device tilted - Set Fast Blink on CRITICAL layer
-        led_pattern_t tilt_pattern = {
-            .mode = LED_MODE_BLINK,
-            .color = LED_COLOR_WHITE_DIM,
-            .period_ms = 500,
-            .duration_ms = 0
-        };
-        led_manager_set_pattern(LED_PRIORITY_CRITICAL, &tilt_pattern);
-    } else if (!is_tilted && was_tilted) {
-        // Tilted ended - Clear CRITICAL layer to reveal previous state
-        led_manager_clear_pattern(LED_PRIORITY_CRITICAL);
-    }
-    was_tilted = is_tilted;
+void led_effects_process_action(void)
+{
+  CORE_DECLARE_IRQ_STATE;
+  CORE_ENTER_CRITICAL();
+  bool due = sample_due;
+  sample_due = false;
+  CORE_EXIT_CRITICAL();
+  if (!due || !is_monitoring) {
+    return;
   }
+
+  float xyz[3];
+  if (!qma6100p_read_acc_xyz(sl_i2cspm_inst, xyz)) {
+    return;
+  }
+  float tilt_angle = calculate_tilt_angle(xyz);
+  bool is_tilted;
+
+  if (was_tilted) {
+      is_tilted = (tilt_angle > (LED_EFFECTS_TILT_THRESHOLD_DEG - LED_EFFECTS_TILT_HYSTERESIS_DEG));
+  } else {
+      is_tilted = (tilt_angle > LED_EFFECTS_TILT_THRESHOLD_DEG);
+  }
+
+  if (is_tilted && !was_tilted) {
+      // Device tilted - Set Fast Blink on CRITICAL layer
+      led_pattern_t tilt_pattern = {
+          .mode = LED_MODE_BLINK,
+          .color = LED_COLOR_WHITE_DIM,
+          .period_ms = 500,
+          .duration_ms = 0
+      };
+      led_manager_set_pattern(LED_PRIORITY_CRITICAL, &tilt_pattern);
+  } else if (!is_tilted && was_tilted) {
+      // Tilted ended - Clear CRITICAL layer to reveal previous state
+      led_manager_clear_pattern(LED_PRIORITY_CRITICAL);
+  }
+  was_tilted = is_tilted;
 }
 
 void led_effects_init(void)
@@ -114,15 +124,14 @@ void led_effects_set_network_state(bool network_formed)
 
         // Start tilt monitoring if not already running
         if (!is_monitoring) {
-            monitor_ticks = 0;
+            sample_due = false;
             was_tilted = false;
-            sl_sleeptimer_start_periodic_timer_ms(&tilt_monitor_timer,
-                                        LED_EFFECTS_UPDATE_INTERVAL_MS,
+            is_monitoring = sl_sleeptimer_start_periodic_timer_ms(&tilt_monitor_timer,
+                                        25 * LED_EFFECTS_UPDATE_INTERVAL_MS,
                                         tilt_monitor_callback,
                                         NULL,
                                         0,
-                                        0);
-            is_monitoring = true;
+                                        0) == SL_STATUS_OK;
         }
     }
 }
