@@ -11,7 +11,7 @@ typedef struct {
     led_pattern_t pattern;
     bool active;
     uint32_t start_tick;
-    uint32_t expiry_tick;
+    uint32_t duration_ticks;
 } led_layer_state_t;
 
 static led_layer_state_t layers[LED_PRIORITY_COUNT];
@@ -28,7 +28,7 @@ static void update_led_hardware(void) {
     for (int i = LED_PRIORITY_COUNT - 1; i >= 0; i--) {
         if (layers[i].active) {
             // Handle auto-expiry for NOTIFICATION or other timed layers
-            if (layers[i].pattern.duration_ms > 0 && current_tick >= layers[i].expiry_tick) {
+            if (layers[i].pattern.duration_ms > 0 && current_tick - layers[i].start_tick >= layers[i].duration_ticks) {
                 layers[i].active = false;
                 continue;
             }
@@ -138,7 +138,7 @@ void led_manager_set_pattern(led_priority_t priority, const led_pattern_t *patte
     layers[priority].start_tick = global_tick_counter;
     
     if (pattern->duration_ms > 0) {
-        layers[priority].expiry_tick = global_tick_counter + (pattern->duration_ms / LED_EFFECTS_UPDATE_INTERVAL_MS);
+        layers[priority].duration_ticks = pattern->duration_ms / LED_EFFECTS_UPDATE_INTERVAL_MS;
     }
 
     CORE_EXIT_CRITICAL();
