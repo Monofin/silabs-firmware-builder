@@ -184,9 +184,9 @@ void nc_zigbee_override_append_source_route(uint16_t destination,
     }
 }
 
-static void install_manual_source_route(uint16_t node_id,
+static ManualSourceRoute *install_manual_source_route(uint16_t node_id,
                                         const uint8_t *relay_bytes,
-                                        uint8_t num_relays)
+                                        uint8_t num_relays, ManualSourceRoute *previous)
 {
     uint8_t insertion_index = xncp_get_pseudo_random_number() % XNCP_MANUAL_SOURCE_ROUTE_TABLE_SIZE;
 
@@ -202,6 +202,9 @@ static void install_manual_source_route(uint16_t node_id,
     }
 
     ManualSourceRoute *route = &manual_source_routes[insertion_index];
+    if (previous != NULL) {
+        *previous = *route;
+    }
 
     for (uint8_t i = 0; i < num_relays; i++) {
         route->relays[i] = BUILD_UINT16(relay_bytes[2 * i + 0], relay_bytes[2 * i + 1]);
@@ -210,6 +213,7 @@ static void install_manual_source_route(uint16_t node_id,
     route->destination = node_id;
     route->num_relays = num_relays;
     route->active = true;
+    return route;
 }
 
 static bool handle_set_source_route(xncp_context_t *ctx)
@@ -227,7 +231,7 @@ static bool handle_set_source_route(xncp_context_t *ctx)
     }
 
     uint16_t node_id = BUILD_UINT16(ctx->payload[0], ctx->payload[1]);
-    install_manual_source_route(node_id, ctx->payload + 2, num_relays);
+    install_manual_source_route(node_id, ctx->payload + 2, num_relays, NULL);
 
     *ctx->status = XNCP_STATUS_OK;
     return true;
@@ -458,6 +462,8 @@ static bool handle_send_unicast(xncp_context_t *ctx)
         apply_extended_timeout(eui64, destination, extended_timeout);
     }
 
+    ManualSourceRoute previous_route;
+    ManualSourceRoute *send_route = NULL;
     if (flags & XNCP_SEND_UNICAST_FLAG_SOURCE_ROUTE) {
         if ((end - p) < 1) {
             *ctx->status = XNCP_STATUS_BAD_ARGUMENT;
@@ -469,7 +475,7 @@ static bool handle_send_unicast(xncp_context_t *ctx)
             *ctx->status = XNCP_STATUS_BAD_ARGUMENT;
             return true;
         }
-        install_manual_source_route(destination, p, num_relays);
+        send_route = install_manual_source_route(destination, p, num_relays, &previous_route);
         p += num_relays * 2;
     }
 
@@ -479,6 +485,11 @@ static bool handle_send_unicast(xncp_context_t *ctx)
     sl_status_t status = sl_zigbee_send_unicast(SL_ZIGBEE_OUTGOING_DIRECT,
                                                 destination, &aps_frame, message_tag,
                                                 message_length, p, &aps_sequence);
+
+    if (status != SL_STATUS_OK && send_route != NULL && send_route->active) {
+        // The stack declined the send before consuming its temporary override.
+        *send_route = previous_route;
+    }
 
     ctx->reply[(*ctx->reply_length)++] = (uint8_t)((status >>  0) & 0xFF);
     ctx->reply[(*ctx->reply_length)++] = (uint8_t)((status >>  8) & 0xFF);
