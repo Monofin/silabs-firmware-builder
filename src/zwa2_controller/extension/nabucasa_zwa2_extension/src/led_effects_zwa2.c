@@ -57,7 +57,9 @@ static void tilt_monitor_callback(sl_sleeptimer_timer_handle_t *handle, void *da
 
   // Read raw accelerometer data
   int16_t reading[3];
-  qma6100p_read_raw_xyz(sl_i2cspm_inst, reading);
+  if (!qma6100p_read_raw_xyz(sl_i2cspm_inst, reading)) {
+    return;
+  }
 
   // Debounce: check if reading is stable compared to last
   int16_t dx = reading[0] - last_reading[0];

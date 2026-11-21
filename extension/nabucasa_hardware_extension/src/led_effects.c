@@ -25,11 +25,8 @@ static bool is_monitoring = false;
 static bool was_tilted = false;
 
 // Calculate tilt angle from accelerometer data
-static float calculate_tilt_angle(void)
+static float calculate_tilt_angle(const float xyz[3])
 {
-  float xyz[3];
-  qma6100p_read_acc_xyz(sl_i2cspm_inst, xyz);
-
   float ax = xyz[0];
   float ay = xyz[1];
   float az = xyz[2];
@@ -54,7 +51,11 @@ static void tilt_monitor_callback(sl_sleeptimer_timer_handle_t *handle, void *da
 
   // Check tilt every ~100ms (25 * 4ms)
   if (monitor_ticks % 25 == 0) {
-    float tilt_angle = calculate_tilt_angle();
+    float xyz[3];
+    if (!qma6100p_read_acc_xyz(sl_i2cspm_inst, xyz)) {
+      return;
+    }
+    float tilt_angle = calculate_tilt_angle(xyz);
     bool is_tilted;
     
     if (was_tilted) {

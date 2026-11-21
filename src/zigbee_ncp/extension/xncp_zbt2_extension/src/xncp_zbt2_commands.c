@@ -61,7 +61,10 @@ static bool handle_set_led_state(xncp_context_t *ctx)
 static bool handle_get_accelerometer(xncp_context_t *ctx)
 {
     float xyz[3];
-    qma6100p_read_acc_xyz(sl_i2cspm_inst, xyz);
+    if (!qma6100p_read_acc_xyz(sl_i2cspm_inst, xyz)) {
+        *ctx->status = XNCP_STATUS_IO_ERROR;
+        return true;
+    }
 
     // X
     memcpy(ctx->reply + *ctx->reply_length, (uint8_t*)&xyz[0], sizeof(float));
