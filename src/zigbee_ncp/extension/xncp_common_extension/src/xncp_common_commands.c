@@ -160,6 +160,7 @@ void nc_zigbee_override_append_source_route(uint16_t destination,
     }
 
     *consumed = true;
+    route->active = false;  // Disable the route after a single use
 
     // Empty source routes are invalid according to the spec
     if (route->num_relays == 0) {
@@ -174,8 +175,6 @@ void nc_zigbee_override_append_source_route(uint16_t destination,
     }
 
     uint8_t relay_index = route->num_relays - 1;
-
-    route->active = false;  // Disable the route after a single use
 
     xncp_append_to_linked_buffers(*msg_header, &route->num_relays, 1);
     xncp_append_to_linked_buffers(*msg_header, &relay_index, 1);
